@@ -4,6 +4,7 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     gemini_api_key: str = ""
+    gemini_api_key_2: str = ""
     database_url: str = "tasks.db"
     cors_origins: str = "http://localhost:5173"
 

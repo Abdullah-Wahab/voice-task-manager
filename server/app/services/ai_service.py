@@ -10,11 +10,16 @@ from app.models import TaskResponse, ConversationTurn
 logger = logging.getLogger(__name__)
 
 client = genai.Client(api_key=get_settings().gemini_api_key)
+client2 = (
+    genai.Client(api_key=get_settings().gemini_api_key_2)
+    if get_settings().gemini_api_key_2
+    else None
+)
 
-# Model fallback chain: Flash (best quality) → Flash-Lite (higher free quota)
+# Model fallback chain — each model has its OWN quota pool
 MODELS = [
-    "gemini-2.5-flash-lite",     # 1000+ RPD free — primary for free tier
-    "gemini-2.0-flash-lite",     # backup
+    "gemini-2.5-flash-lite",     # Primary: highest free quota
+    "gemini-2.5-flash",          # Fallback: separate quota, 20 RPD
 ]
 
 
@@ -132,9 +137,9 @@ def _parse_response(text: str) -> dict:
         }
 
 
-async def _call_gemini(model: str, messages: list, system_prompt: str) -> str:
-    """Call Gemini API with a specific model. Raises on failure."""
-    response = client.models.generate_content(
+async def _call_gemini(api_client, model: str, messages: list, system_prompt: str) -> str:
+    """Call Gemini API with a specific client and model."""
+    response = api_client.models.generate_content(
         model=model,
         contents=messages,
         config=types.GenerateContentConfig(
@@ -156,29 +161,35 @@ async def process_chat(
     system_prompt = _build_system_prompt(tasks)
     messages = _build_messages(conversation_history, transcript)
 
+    # Build list of clients to try (key1 + key2 if available)
+    clients = [("key1", client)]
+    if client2:
+        clients.append(("key2", client2))
+
     last_error = None
 
-    for model in MODELS:
-        # Retry up to 2 times per model (for transient 429s)
-        for attempt in range(2):
-            try:
-                logger.info(f"Trying model: {model} (attempt {attempt + 1})")
-                text = await _call_gemini(model, messages, system_prompt)
-                return _parse_response(text)
+    for key_name, api_client in clients:
+        for model in MODELS:
+            for attempt in range(2):
+                try:
+                    logger.info(f"Trying {key_name} → {model} (attempt {attempt + 1})")
+                    text = await _call_gemini(api_client, model, messages, system_prompt)
+                    return _parse_response(text)
 
-            except Exception as e:
-                last_error = e
-                error_str = str(e)
+                except Exception as e:
+                    last_error = e
+                    error_str = str(e)
 
-                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                    if attempt == 0:
-                        # Wait and retry once for transient rate limits
-                        logger.warning(f"{model} rate limited, retrying in 5s...")
-                        await asyncio.sleep(5)
-                        continue
+                    if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                        if attempt == 0:
+                            logger.warning(f"{key_name} → {model} rate limited, retrying in 10s...")
+                            await asyncio.sleep(10)
+                            continue
+                        else:
+                            logger.warning(f"{key_name} → {model} exhausted, trying next...")
+                            break
                     else:
-                        # Exhausted retries for this model, try next model
-                        logger.warning(f"{model} quota exhausted, trying next model...")
+                        logger.error(f"{key_name} → {model} error: {e}")
                         break
                 else:
                     # Non-rate-limit error, try next model immediately

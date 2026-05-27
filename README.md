@@ -60,7 +60,7 @@ Built as a take-home assessment for **Urban Ground GmbH**.
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/voice-task-manager.git
+git clone https://github.com/Abdullah-Wahab/voice-task-manager.git
 cd voice-task-manager
 ```
 
@@ -71,7 +71,6 @@ python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# Get your free Gemini API key from https://aistudio.google.com/apikey
 cp .env.example .env
 # Edit .env and add your GEMINI_API_KEY
 
@@ -207,9 +206,3 @@ cd server
 docker build -t voice-task-manager-api .
 docker run -p 8000:8000 -e GEMINI_API_KEY=your-key voice-task-manager-api
 ```
-
----
-
-## 📄 License
-
-MIT

@@ -83,21 +83,21 @@ async def _execute_actions(actions: list[dict]) -> None:
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    # Get current tasks for AI context
+    # 1. Get current tasks for AI context
     current_tasks = await task_service.get_all_tasks()
 
-    # Send to AI service
+    # 2. Send to Gemini
     ai_response = await ai_service.process_chat(
         transcript=request.transcript,
         conversation_history=request.conversation_history,
         tasks=current_tasks,
     )
 
-    # Execute actions
+    # 3. Execute actions
     actions = ai_response.get("actions", [])
     await _execute_actions(actions)
 
-    # Return updated state
+    # 4. Return updated state
     updated_tasks = await task_service.get_all_tasks()
 
     return ChatResponse(
